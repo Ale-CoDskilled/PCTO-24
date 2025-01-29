@@ -9,6 +9,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.metrics import confusion_matrix, accuracy_score
+from tensorflow.keras import regularizers
 
 # Verifica della disponibilità della GPU
 gpus = tf.config.experimental.list_physical_devices('GPU')
@@ -170,7 +171,7 @@ data_norm = ImageDataGenerator(
 
 batch_size = 64  # Dimensione del batch per il caricamento dei dati
 
-# Generatore di dati di training con data augmentation
+#Generatore di dati di training con data augmentation
 train_data = train_aug.flow_from_directory(
     train_folder,  # Percorso della cartella di training
     target_size=img_size,  # Ridimensiona le immagini alla dimensione specificata
@@ -182,11 +183,14 @@ train_data = train_aug.flow_from_directory(
 )
 
 # Se si desidera utilizzare solo la normalizzazione senza data augmentation:
-# train_data = data_norm.flow_from_directory(
-#    train_folder,
-#    batch_size=batch_size,
-#    shuffle=True,
-#    seed=42
+#train_data = data_norm.flow_from_directory(
+ #   train_folder,
+  #  target_size=img_size,
+   # color_mode='rgb',  # Colore RGB
+    #class_mode='categorical',  # Etichette in formato categorico (one-hot encoding)
+    #batch_size=batch_size,
+    #shuffle=True,
+    #seed=42
 # )
 
 # Normalizzazione delle immagini di test (divisione per 255)
@@ -201,7 +205,7 @@ test_x /= 255  # Porta i valori dei pixel nell'intervallo [0, 1]
 #     tf.keras.layers.Dense(2, activation='softmax')
 #  ])
 # COMPILAZIONE DEL MODELLO
-lr = 0.001
+lr = 0.00002
 loss_fn = tf.keras.losses.CategoricalCrossentropy()
 # mlp_model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=lr), loss=loss_fn, metrics=['accuracy'])
 # ADDESTRAMENTO DEL MODELLO
@@ -224,36 +228,50 @@ loss_fn = tf.keras.losses.CategoricalCrossentropy()
 # plot_training_history(history_mlp.history)
 # plot_confusion_matrix(test_y_int, y_pred, classes)
 
-# CREAZIONE DEL MODELLO CNN
+# Creazione del modello CNN migliorato
 cnn_model = tf.keras.models.Sequential([
-    tf.keras.layers.Conv2D(128, (3, 3), activation='relu', input_shape=(128, 128, 3)),
+    # Primo blocco convoluzionale (conv + batchnorm + maxpooling + dropout)
+    tf.keras.layers.Conv2D(64, (3, 3), activation='relu', padding='same', input_shape=(128, 128, 3)),
     tf.keras.layers.BatchNormalization(),
     tf.keras.layers.MaxPooling2D((2, 2)),
-    tf.keras.layers.Conv2D(128, (3, 3), activation='relu', input_shape=(128, 128, 3)),
+    tf.keras.layers.Dropout(0.2),  # Dropout per evitare overfitting
+
+    # Secondo blocco convoluzionale
+    tf.keras.layers.Conv2D(128, (3, 3), activation='relu', padding='same'),
     tf.keras.layers.BatchNormalization(),
     tf.keras.layers.MaxPooling2D((2, 2)),
-    tf.keras.layers.Conv2D(64, (3, 3), activation='relu', input_shape=(128, 128, 3)),
+    tf.keras.layers.Dropout(0.3),  # Maggiore dropout
+
+    # Terzo blocco convoluzionale
+    tf.keras.layers.Conv2D(256, (3, 3), activation='relu', padding='same'),
     tf.keras.layers.BatchNormalization(),
     tf.keras.layers.MaxPooling2D((2, 2)),
-    tf.keras.layers.Conv2D(64, (3, 3), activation='relu', input_shape=(128, 128, 3)),
+
+    # Quarto blocco convoluzionale
+    tf.keras.layers.Conv2D(512, (3, 3), activation='relu', padding='same'),
     tf.keras.layers.BatchNormalization(),
-    tf.keras.layers.Conv2D(64, (3, 3), activation='relu', input_shape=(128, 128, 3)),
-    tf.keras.layers.BatchNormalization(),
-    tf.keras.layers.Conv2D(64, (3, 3), activation='relu', input_shape=(128, 128, 3)),
-    tf.keras.layers.BatchNormalization(),
+    tf.keras.layers.MaxPooling2D((2, 2)),
+    tf.keras.layers.Dropout(0.4),  # Maggiore dropout
+
+
+
+
+    # Strato fully connected
     tf.keras.layers.Flatten(),
-    tf.keras.layers.Dense(64, activation='relu'),
-    tf.keras.layers.Dense(32, activation='relu'),
-    tf.keras.layers.Dropout(0.2),
-    tf.keras.layers.Dense(2, activation='softmax')
+    tf.keras.layers.Dense(256, activation='relu', kernel_regularizer=regularizers.l2(0.001)),
+    tf.keras.layers.Dropout(0.5),  # Dropout per evitare overfitting
+    tf.keras.layers.Dense(64, activation='relu', kernel_regularizer=regularizers.l2(0.001)),
+    # Strato di output (softmax per la classificazione)
+    tf.keras.layers.Dense(2, activation='softmax')  # Due classi: benigni e maligni
 ])
+
 # COMPILAZIONE DEL MODELLO
 cnn_model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=lr), loss=loss_fn, metrics=['accuracy'])
 # ADDESTRAMENTO DEL MODELLO
 cnn_history = cnn_model.fit(
     train_data,
     validation_data=(test_x, to_categorical(test_y_int, num_classes=2)),
-    epochs=10,
+    epochs=50,
     verbose=1
 )
 # PLOTS
